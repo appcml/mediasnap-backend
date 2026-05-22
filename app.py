@@ -8,12 +8,21 @@ import threading
 import time
 
 app = Flask(__name__)
-CORS(app)  # Permite requests desde GitHub Pages
+CORS(app)
 
-# Carpeta temporal para archivos descargados
 TEMP_DIR = tempfile.gettempdir()
+COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
 
-# Limpia archivos viejos cada 10 minutos
+def get_ydl_opts(extra={}):
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+    }
+    if os.path.exists(COOKIES_FILE):
+        opts["cookiefile"] = COOKIES_FILE
+    opts.update(extra)
+    return opts
+
 def cleanup_old_files():
     while True:
         time.sleep(600)
@@ -31,31 +40,21 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 @app.route("/")
 def index():
-    return jsonify({"status": "MediaSnap API activa", "version": "1.0"})
+    return jsonify({"status": "MediaSnap API activa", "version": "1.1"})
 
 
 @app.route("/info", methods=["POST"])
 def get_info():
-    """Devuelve info del video/audio sin descargar (formatos disponibles, título, thumbnail)"""
     data = request.get_json()
     url = data.get("url", "").strip()
-
     if not url:
         return jsonify({"error": "URL requerida"}), 400
 
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(get_ydl_opts({"skip_download": True})) as ydl:
             info = ydl.extract_info(url, download=False)
 
         formats = []
-
-        # Formatos de video con audio
         for f in info.get("formats", []):
             if f.get("vcodec") != "none" and f.get("acodec") != "none":
                 height = f.get("height")
@@ -68,7 +67,6 @@ def get_info():
                         "filesize": f.get("filesize") or f.get("filesize_approx"),
                     })
 
-        # Audio MP3
         formats.append({
             "format_id": "bestaudio",
             "label": "Audio MP3 (mejor calidad)",
@@ -77,7 +75,6 @@ def get_info():
             "filesize": None,
         })
 
-        # Elimina duplicados por label
         seen = set()
         unique_formats = []
         for f in formats:
@@ -99,7 +96,6 @@ def get_info():
 
 @app.route("/download", methods=["POST"])
 def download():
-    """Descarga el archivo y lo sirve al usuario"""
     data = request.get_json()
     url = data.get("url", "").strip()
     format_id = data.get("format_id", "bestaudio")
@@ -111,8 +107,7 @@ def download():
     file_id = str(uuid.uuid4())
 
     if file_type == "audio":
-        output_path = os.path.join(TEMP_DIR, f"{file_id}.mp3")
-        ydl_opts = {
+        ydl_opts = get_ydl_opts({
             "format": "bestaudio/best",
             "outtmpl": os.path.join(TEMP_DIR, f"{file_id}.%(ext)s"),
             "postprocessors": [{
@@ -120,37 +115,33 @@ def download():
                 "preferredcodec": "mp3",
                 "preferredquality": "192",
             }],
-            "quiet": True,
-        }
+        })
     else:
-        output_path = os.path.join(TEMP_DIR, f"{file_id}.mp4")
-        ydl_opts = {
+        ydl_opts = get_ydl_opts({
             "format": f"{format_id}+bestaudio/best",
             "outtmpl": os.path.join(TEMP_DIR, f"{file_id}.%(ext)s"),
             "merge_output_format": "mp4",
-            "quiet": True,
-        }
+        })
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             title = info.get("title", "descarga")
 
-        # Busca el archivo generado
+        output_path = None
         for ext in ["mp3", "mp4", "webm", "m4a"]:
             candidate = os.path.join(TEMP_DIR, f"{file_id}.{ext}")
             if os.path.exists(candidate):
                 output_path = candidate
                 break
 
+        if not output_path:
+            return jsonify({"error": "No se encontró el archivo descargado"}), 500
+
         safe_title = "".join(c for c in title if c.isalnum() or c in " _-").strip()
         download_name = f"{safe_title}.{output_path.split('.')[-1]}"
 
-        return send_file(
-            output_path,
-            as_attachment=True,
-            download_name=download_name,
-        )
+        return send_file(output_path, as_attachment=True, download_name=download_name)
 
     except Exception as e:
         return jsonify({"error": f"Error al descargar: {str(e)}"}), 500

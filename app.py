@@ -39,6 +39,18 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 
 @app.route("/")
+@app.route("/debug")
+def debug():
+    import os
+    base = os.path.dirname(__file__)
+    files = os.listdir(base)
+    cookies_exists = os.path.exists(COOKIES_FILE)
+    return jsonify({
+        "base_dir": base,
+        "files": files,
+        "cookies_path": COOKIES_FILE,
+        "cookies_exists": cookies_exists
+    })
 def index():
     return jsonify({"status": "MediaSnap API activa", "version": "1.1"})
 

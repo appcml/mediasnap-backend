@@ -12,21 +12,22 @@ CORS(app)
 
 TEMP_DIR = tempfile.gettempdir()
 
-# Carga cookies desde variable de entorno
-COOKIES_CONTENT = os.environ.get("YOUTUBE_COOKIES", "")
+# Busca cookies en múltiples rutas posibles
 COOKIES_FILE = None
-if COOKIES_CONTENT:
-    _cf = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
-    _cf.write(COOKIES_CONTENT)
-    _cf.close()
-    COOKIES_FILE = _cf.name
+for path in [
+    "/etc/secrets/cookies.txt",
+    os.path.join(os.path.dirname(__file__), "cookies.txt"),
+]:
+    if os.path.exists(path):
+        COOKIES_FILE = path
+        break
 
 def get_ydl_opts(extra={}):
     opts = {
         "quiet": True,
         "no_warnings": True,
     }
-    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
+    if COOKIES_FILE:
         opts["cookiefile"] = COOKIES_FILE
     opts.update(extra)
     return opts
@@ -48,7 +49,7 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 @app.route("/")
 def index():
-    return jsonify({"status": "MediaSnap API activa", "version": "1.2"})
+    return jsonify({"status": "MediaSnap API activa", "version": "1.3"})
 
 
 @app.route("/debug")
@@ -56,7 +57,7 @@ def debug():
     return jsonify({
         "cookies_file": COOKIES_FILE,
         "cookies_exists": os.path.exists(COOKIES_FILE) if COOKIES_FILE else False,
-        "cookies_env_set": bool(COOKIES_CONTENT),
+        "secrets_dir": os.listdir("/etc/secrets") if os.path.exists("/etc/secrets") else "no existe",
     })
 
 

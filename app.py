@@ -11,14 +11,22 @@ app = Flask(__name__)
 CORS(app)
 
 TEMP_DIR = tempfile.gettempdir()
-COOKIES_FILE = os.path.join(os.path.dirname(__file__), "cookies.txt")
+
+# Carga cookies desde variable de entorno
+COOKIES_CONTENT = os.environ.get("YOUTUBE_COOKIES", "")
+COOKIES_FILE = None
+if COOKIES_CONTENT:
+    _cf = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+    _cf.write(COOKIES_CONTENT)
+    _cf.close()
+    COOKIES_FILE = _cf.name
 
 def get_ydl_opts(extra={}):
     opts = {
         "quiet": True,
         "no_warnings": True,
     }
-    if os.path.exists(COOKIES_FILE):
+    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
     opts.update(extra)
     return opts
@@ -39,20 +47,17 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 
 @app.route("/")
+def index():
+    return jsonify({"status": "MediaSnap API activa", "version": "1.2"})
+
+
 @app.route("/debug")
 def debug():
-    import os
-    base = os.path.dirname(__file__)
-    files = os.listdir(base)
-    cookies_exists = os.path.exists(COOKIES_FILE)
     return jsonify({
-        "base_dir": base,
-        "files": files,
-        "cookies_path": COOKIES_FILE,
-        "cookies_exists": cookies_exists
+        "cookies_file": COOKIES_FILE,
+        "cookies_exists": os.path.exists(COOKIES_FILE) if COOKIES_FILE else False,
+        "cookies_env_set": bool(COOKIES_CONTENT),
     })
-def index():
-    return jsonify({"status": "MediaSnap API activa", "version": "1.1"})
 
 
 @app.route("/info", methods=["POST"])

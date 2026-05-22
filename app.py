@@ -6,20 +6,23 @@ import tempfile
 import uuid
 import threading
 import time
+import shutil
 
 app = Flask(__name__)
 CORS(app)
 
 TEMP_DIR = tempfile.gettempdir()
 
-# Busca cookies en múltiples rutas posibles
+# Copia cookies a ruta temporal (Render /etc/secrets es read-only)
 COOKIES_FILE = None
-for path in [
-    "/etc/secrets/cookies.txt",
-    os.path.join(os.path.dirname(__file__), "cookies.txt"),
-]:
-    if os.path.exists(path):
-        COOKIES_FILE = path
+_secret = "/etc/secrets/cookies.txt"
+_local = os.path.join(os.path.dirname(__file__), "cookies.txt")
+
+for src in [_secret, _local]:
+    if os.path.exists(src):
+        _tmp = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+        shutil.copy2(src, _tmp)
+        COOKIES_FILE = _tmp
         break
 
 def get_ydl_opts(extra={}):
@@ -27,7 +30,7 @@ def get_ydl_opts(extra={}):
         "quiet": True,
         "no_warnings": True,
     }
-    if COOKIES_FILE:
+    if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
     opts.update(extra)
     return opts
@@ -49,7 +52,7 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 @app.route("/")
 def index():
-    return jsonify({"status": "MediaSnap API activa", "version": "1.3"})
+    return jsonify({"status": "MediaSnap API activa", "version": "1.4"})
 
 
 @app.route("/debug")

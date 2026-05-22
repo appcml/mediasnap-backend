@@ -13,14 +13,10 @@ CORS(app)
 
 TEMP_DIR = tempfile.gettempdir()
 
-# Copia cookies a ruta temporal (Render /etc/secrets es read-only)
 COOKIES_FILE = None
-_secret = "/etc/secrets/cookies.txt"
-_local = os.path.join(os.path.dirname(__file__), "cookies.txt")
-
-for src in [_secret, _local]:
+for src in ["/etc/secrets/cookies.txt", os.path.join(os.path.dirname(__file__), "cookies.txt")]:
     if os.path.exists(src):
-        _tmp = os.path.join(tempfile.gettempdir(), "yt_cookies.txt")
+        _tmp = os.path.join(TEMP_DIR, "yt_cookies.txt")
         shutil.copy2(src, _tmp)
         COOKIES_FILE = _tmp
         break
@@ -29,6 +25,14 @@ def get_ydl_opts(extra={}):
     opts = {
         "quiet": True,
         "no_warnings": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        },
     }
     if COOKIES_FILE and os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
@@ -52,7 +56,7 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 @app.route("/")
 def index():
-    return jsonify({"status": "MediaSnap API activa", "version": "1.4"})
+    return jsonify({"status": "MediaSnap API activa", "version": "1.5"})
 
 
 @app.route("/debug")

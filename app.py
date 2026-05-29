@@ -25,6 +25,12 @@ def is_blocked(url):
     blocked = ["youtube.com", "youtu.be", "spotify.com"]
     return any(b in url for b in blocked)
 
+def safe_filename(title, ext, max_len=50):
+    clean = "".join(c for c in title if c.isalnum() or c in " _-áéíóúñüÁÉÍÓÚÑÜ").strip()
+    if len(clean) > max_len:
+        clean = clean[:max_len].strip()
+    return f"{clean}.{ext}" if clean else f"descarga.{ext}"
+
 def get_ydl_opts(extra={}):
     opts = {
         "quiet": True,
@@ -55,7 +61,7 @@ threading.Thread(target=cleanup_old_files, daemon=True).start()
 
 @app.route("/")
 def index():
-    return jsonify({"status": "MediaSnap API activa", "version": "1.9"})
+    return jsonify({"status": "MediaSnap API activa", "version": "2.0"})
 
 
 @app.route("/info", methods=["POST"])
@@ -137,10 +143,18 @@ def download():
             }],
         })
     else:
+        # Fuerza H.264 para compatibilidad con CapCut y editores
         ydl_opts = get_ydl_opts({
-            "format": f"{format_id}+bestaudio/best",
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best",
             "outtmpl": os.path.join(TEMP_DIR, f"{file_id}.%(ext)s"),
             "merge_output_format": "mp4",
+            "postprocessors": [{
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            }],
+            "postprocessor_args": {
+                "ffmpeg": ["-vcodec", "libx264", "-acodec", "aac", "-crf", "23", "-preset", "fast"]
+            },
         })
 
     try:
@@ -158,9 +172,8 @@ def download():
         if not output_path:
             return jsonify({"error": "No se encontró el archivo"}), 500
 
-        safe_title = "".join(c for c in title if c.isalnum() or c in " _-áéíóúñÁÉÍÓÚÑ").strip()
         ext = output_path.split(".")[-1]
-        download_name = f"{safe_title}.{ext}"
+        download_name = safe_filename(title, ext)
         return send_file(output_path, as_attachment=True, download_name=download_name)
 
     except Exception as e:
